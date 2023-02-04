@@ -237,6 +237,11 @@ You can use the migration utility (can be found on [Phobos supplementaries repo]
 
 ## Changelog
 
+### 0.3.0.1
+
+Phobos fixes:
+- Fixed shield animation being hidden while underground or in tunnels fix not working correctly (by Starkku)
+
 ### 0.3
 
 <details>
