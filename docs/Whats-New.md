@@ -241,6 +241,7 @@ You can use the migration utility (can be found on [Phobos supplementaries repo]
 
 Phobos fixes:
 - Fixed shield animation being hidden while underground or in tunnels fix not working correctly (by Starkku)
+- Restore the `MindClearedSound` when deploying a mind-controlled unit into a building loses the mind-control (by Trsdy)
 
 ### 0.3
 
