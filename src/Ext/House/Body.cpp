@@ -73,6 +73,22 @@ HouseClass* HouseExt::GetHouseKind(OwnerHouseKind const kind, bool const allowRa
 		return pDefault;
 	}
 }
+void HouseExt::ExtData::UpdateAutoDeathObjectsInLimbo()
+{
+	for (auto pExt : this->OwnedTimedAutoDeathObjects)
+	{
+		auto pItem = pExt->OwnerObject();
+		if (!pItem->IsInLogic && pItem->IsAlive && pExt->TypeExtData->AutoDeath_Behavior.isset() && pExt->AutoDeathTimer.Completed())
+		{
+			if (this->OwnedLimboDeliveredBuildings.contains(pItem->UniqueID))
+				this->OwnedLimboDeliveredBuildings.erase(pItem->UniqueID);
+			pItem->RegisterDestruction(nullptr);
+			// I doubt those in LimboDelete being really necessary, they're gonna be updated either next frame or after uninit anyway
+			pItem->UnInit();
+		}
+	}
+}
+
 // =============================
 // load / save
 
@@ -82,6 +98,7 @@ void HouseExt::ExtData::Serialize(T& Stm)
 	Stm
 		.Process(this->BuildingCounter)
 		.Process(this->OwnedLimboDeliveredBuildings)
+		.Process(this->OwnedTimedAutoDeathObjects)
 		.Process(this->Factory_BuildingType)
 		.Process(this->Factory_InfantryType)
 		.Process(this->Factory_VehicleType)

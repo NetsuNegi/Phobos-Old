@@ -240,6 +240,7 @@ You can use the migration utility (can be found on [Phobos supplementaries repo]
 ### 0.3.0.1
 
 Phobos fixes:
+- `AutoDeath` support for objects in limbo (by Trsdy)
 - Fixed shield animation being hidden while underground or in tunnels fix not working correctly (by Starkku)
 - Restore the `MindClearedSound` when deploying a mind-controlled unit into a building loses the mind-control (by Trsdy)
 
