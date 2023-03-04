@@ -246,6 +246,7 @@ Phobos fixes:
 - Fixed `RadSiteWarhead.Detonate` not detonating precisely on the affected object (thus requiring `CellSpread`) (by Starkku)
 - Fixed script action 10103 'Load Into Transports' unintentionally skipping next action (by Trsdy)
 - Changed mission retry dialog button order to better match old order people are used to (by Trsdy)
+- Allow PowerPlant Enhancer to be affected by EMP (by Trsdy)
 
 ### 0.3
 
