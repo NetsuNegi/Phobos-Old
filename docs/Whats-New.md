@@ -247,6 +247,7 @@ Phobos fixes:
 - Fixed script action 10103 'Load Into Transports' unintentionally skipping next action (by Trsdy)
 - Changed mission retry dialog button order to better match old order people are used to (by Trsdy)
 - Allow PowerPlant Enhancer to be affected by EMP (by Trsdy)
+- Animation `Weapon` with `Damage.DealtByInvoker=true` now uses the invoker's house to deal damage and apply Phobos warhead effects even if invoker is dead when weapon is fired (by Starkku)
 
 ### 0.3
 

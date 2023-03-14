@@ -6,6 +6,12 @@
 template<> const DWORD Extension<AnimClass>::Canary = 0xAAAAAAAA;
 AnimExt::ExtContainer AnimExt::ExtMap;
 
+void AnimExt::ExtData::SetInvoker(TechnoClass* pInvoker)
+{
+	this->Invoker = pInvoker;
+	this->InvokerHouse = pInvoker ? pInvoker->Owner : nullptr;
+}
+
 //Modified from Ares
 const bool AnimExt::SetAnimOwnerHouseKind(AnimClass* pAnim, HouseClass* pInvoker, HouseClass* pVictim, bool defaultToVictimOwner)
 {
@@ -35,6 +41,7 @@ void AnimExt::ExtData::Serialize(T& Stm)
 		.Process(this->DeathUnitTurretFacing)
 		.Process(this->DeathUnitHasTurret)
 		.Process(this->Invoker)
+		.Process(this->InvokerHouse)
 		;
 }
 

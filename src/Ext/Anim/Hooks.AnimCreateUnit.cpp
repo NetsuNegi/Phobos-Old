@@ -128,9 +128,10 @@ DEFINE_HOOK(0x424932, AnimClass_AI_CreateUnit_ActualAffects, 0x6)
 			if (success)
 			{
 				if (pTechno->HasTurret() && pExt->FromDeathUnit && pExt->DeathUnitHasTurret && pTypeExt->CreateUnit_InheritTurretFacings.Get())
+				{
 					pTechno->SecondaryFacing.SetCurrent(pExt->DeathUnitTurretFacing);
-
-				Debug::Log("[" __FUNCTION__ "] Stored Turret Facing %d \n", pExt->DeathUnitTurretFacing.GetFacing<256>());
+					Debug::Log("CreateUnit: Stored Turret Facing %d \n", pExt->DeathUnitTurretFacing.GetFacing<256>());
+				}
 
 				if (!pTechno->InLimbo)
 					pTechno->QueueMission(pTypeExt->CreateUnit_Mission.Get(), false);
@@ -179,7 +180,7 @@ DEFINE_HOOK(0x469C98, BulletClass_DetonateAt_DamageAnimSelected, 0x0)
 		if (pThis->Owner)
 		{
 			auto pExt = AnimExt::ExtMap.Find(pAnim);
-			pExt->Invoker = pThis->Owner;
+			pExt->SetInvoker(pThis->Owner);
 		}
 	}
 	else if (pThis->WH == RulesClass::Instance->NukeWarhead)
