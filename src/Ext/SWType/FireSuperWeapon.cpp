@@ -67,10 +67,12 @@ inline void LimboCreate(BuildingTypeClass* pType, HouseClass* pOwner, int ID)
 			pBuildingExt->LimboID = ID;
 
 			if (auto pOwnerExt = HouseExt::ExtMap.Find(pOwner))
-			{	// Add building to list of owned limbo buildings
-				pOwnerExt->OwnedLimboDeliveredBuildings.insert({ pBuilding->UniqueID, pBuildingExt });
+			{
+				// Add building to list of owned limbo buildings
+				pOwnerExt->OwnedLimboDeliveredBuildings.insert({ pBuilding, pBuildingExt });
 
 				auto pTechExt = TechnoExt::ExtMap.Find(pBuilding);
+
 				if (pTechExt->TypeExtData->AutoDeath_Behavior.isset() && pTechExt->TypeExtData->AutoDeath_AfterDelay > 0)
 				{
 					pTechExt->AutoDeathTimer.Start(pTechExt->TypeExtData->AutoDeath_AfterDelay);
@@ -89,7 +91,7 @@ inline void LimboDelete(BuildingClass* pBuilding, HouseClass* pTargetHouse)
 
 	// Remove building from list of owned limbo buildings
 	if (pOwnerExt)
-		pOwnerExt->OwnedLimboDeliveredBuildings.erase(pBuilding->UniqueID);
+		pOwnerExt->OwnedLimboDeliveredBuildings.erase(pBuilding);
 
 	// Mandatory
 	pBuilding->InLimbo = true;
@@ -200,7 +202,7 @@ void SWTypeExt::ExtData::ApplyLimboKill(HouseClass* pHouse)
 			{
 				if (auto const pHouseExt = HouseExt::ExtMap.Find(pTargetHouse))
 				{
-					for (const auto& [buildingUniqueID, pBuildingExt] : pHouseExt->OwnedLimboDeliveredBuildings)
+					for (const auto& [pBuilding, pBuildingExt] : pHouseExt->OwnedLimboDeliveredBuildings)
 					{
 						if (pBuildingExt->LimboID == limboKillID)
 							LimboDelete(pBuildingExt->OwnerObject(), pTargetHouse);
