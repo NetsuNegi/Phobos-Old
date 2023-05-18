@@ -251,6 +251,7 @@ Phobos fixes:
 - Animation `Weapon` with `Damage.DealtByInvoker=true` now uses the invoker's house to deal damage and apply Phobos warhead effects even if invoker is dead when weapon is fired (by Starkku)
 - Fixed a crash when trying to create radiation outside map bounds (by Otamaa)
 - Fixed new AI attack scripts not allowing zero damage weapons to pick targets (by Starkku)
+- Fixed floating point value parsing precision to match the game (by Starkku)
 
 ### 0.3
 
