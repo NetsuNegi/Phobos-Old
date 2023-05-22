@@ -245,7 +245,7 @@ Phobos fixes:
 - Fixed shield animation being hidden while underground or in tunnels fix not working correctly (by Starkku)
 - Restore the `MindClearedSound` when deploying a mind-controlled unit into a building loses the mind-control (by Trsdy)
 - Fixed `RadSiteWarhead.Detonate` not detonating precisely on the affected object (thus requiring `CellSpread`) (by Starkku)
-- Fixed script action 10103 'Load Into Transports' unintentionally skipping next action (by Trsdy)
+- Fixed script action 10103 'Load Into Transports' unintentionally skipping next action (by FS-21)
 - Changed mission retry dialog button order to better match old order people are used to (by Trsdy)
 - Allow PowerPlant Enhancer to be affected by EMP (by Trsdy)
 - Animation `Weapon` with `Damage.DealtByInvoker=true` now uses the invoker's house to deal damage and apply Phobos warhead effects even if invoker is dead when weapon is fired (by Starkku)
