@@ -32,6 +32,9 @@
 
 #pragma once
 
+#include <vector>
+#include <string>
+#include <ranges>
 #include "Parser.h"
 
 #include <Phobos.h>
@@ -130,5 +133,23 @@ public:
 	bool ReadArmor(const char* pSection, const char* pKey, int *nBuffer) {
 		*nBuffer = IniFile->ReadArmorType(pSection, pKey, *nBuffer);
 		return (*nBuffer != -1);
+	}
+
+	bool ParseStringList(std::vector<std::string>& values, const char* pSection, const char* pKey)
+	{
+		if (this->ReadString(pSection, pKey))
+		{
+			values.clear();
+			for (auto&& part : std::string_view { this->value() } | std::views::split(','))
+			{
+				std::string_view sv { part.begin(), part.end() };
+				auto s = sv.find_first_not_of(" \t\r");
+				auto e = sv.find_last_not_of(" \t\r");
+				values.emplace_back(sv.substr(s, e - s + 1));
+			}
+			return true;
+		}
+
+		return false;
 	}
 };

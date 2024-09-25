@@ -6,7 +6,7 @@ bool CaptureManagerExt::CanCapture(CaptureManagerClass* pManager, TechnoClass* p
 		return pManager->CanCapture(pTarget);
 
 	auto pTechnoTypeExt = TechnoTypeExt::ExtMap.Find(pManager->Owner->GetTechnoType());
-	if (pTechnoTypeExt && pTechnoTypeExt->MultiMindControl_ReleaseVictim)
+	if (pTechnoTypeExt->MultiMindControl_ReleaseVictim)
 	{
 		// I hate Ares' completely rewritten things - secsome
 		pManager->MaxControlNodes += 1;
@@ -18,7 +18,7 @@ bool CaptureManagerExt::CanCapture(CaptureManagerClass* pManager, TechnoClass* p
 	return pManager->CanCapture(pTarget);
 }
 
-bool CaptureManagerExt::FreeUnit(CaptureManagerClass* pManager, TechnoClass* pTarget, bool bSilent)
+bool CaptureManagerExt::FreeUnit(CaptureManagerClass* pManager, TechnoClass* pTarget, bool silent)
 {
 	if (pTarget)
 	{
@@ -33,7 +33,7 @@ bool CaptureManagerExt::FreeUnit(CaptureManagerClass* pManager, TechnoClass* pTa
 					pTarget->MindControlRingAnim = nullptr;
 				}
 
-				if (!bSilent)
+				if (!silent)
 				{
 					int nSound = pTarget->GetTechnoType()->MindClearedSound;
 
@@ -47,12 +47,11 @@ bool CaptureManagerExt::FreeUnit(CaptureManagerClass* pManager, TechnoClass* pTa
 				auto pOriginOwner = pNode->OriginalOwner->Defeated ?
 					HouseClass::FindNeutral() : pNode->OriginalOwner;
 
-				pTarget->SetOwningHouse(pOriginOwner);
+				pTarget->SetOwningHouse(pOriginOwner, !silent);
 				pManager->DecideUnitFate(pTarget);
 				pTarget->MindControlledBy = nullptr;
 
-				if (pNode)
-					GameDelete(pNode);
+				GameDelete(pNode);
 
 				pManager->ControlNodes.RemoveItem(i);
 
@@ -65,7 +64,7 @@ bool CaptureManagerExt::FreeUnit(CaptureManagerClass* pManager, TechnoClass* pTa
 }
 
 bool CaptureManagerExt::CaptureUnit(CaptureManagerClass* pManager, TechnoClass* pTarget,
-	bool bRemoveFirst, AnimTypeClass* pControlledAnimType)
+	bool bRemoveFirst, AnimTypeClass* pControlledAnimType, bool silent)
 {
 	if (CaptureManagerExt::CanCapture(pManager, pTarget))
 	{
@@ -90,7 +89,7 @@ bool CaptureManagerExt::CaptureUnit(CaptureManagerClass* pManager, TechnoClass* 
 			pManager->ControlNodes.AddItem(pControlNode);
 			pControlNode->LinkDrawTimer.Start(RulesClass::Instance->MindControlAttackLineFrames);
 
-			if (pTarget->SetOwningHouse(pManager->Owner->Owner))
+			if (pTarget->SetOwningHouse(pManager->Owner->Owner, !silent))
 			{
 				pTarget->MindControlledBy = pManager->Owner;
 
@@ -128,7 +127,7 @@ bool CaptureManagerExt::CaptureUnit(CaptureManagerClass* pManager, TechnoClass* 
 
 bool CaptureManagerExt::CaptureUnit(CaptureManagerClass* pManager, AbstractClass* pTechno, AnimTypeClass* pControlledAnimType)
 {
-	if (const auto pTarget = abstract_cast<TechnoClass*>(pTechno))
+	if (const auto pTarget = generic_cast<TechnoClass*>(pTechno))
 	{
 		bool bRemoveFirst = false;
 		if (auto pTechnoTypeExt = TechnoTypeExt::ExtMap.Find(pManager->Owner->GetTechnoType()))

@@ -12,6 +12,10 @@ class AnimExt
 public:
 	using base_type = AnimClass;
 
+	static constexpr DWORD Canary = 0xAAAAAAAA;
+	static constexpr size_t ExtPointerOffset = 0xD0;
+	static constexpr bool ShouldConsiderInvalidatePointer = false; // Sheer volume of animations in an average game makes a bespoke solution for pointer invalidation worthwhile.
+
 	class ExtData final : public Extension<AnimClass>
 	{
 	public:
@@ -22,6 +26,7 @@ public:
 		TechnoClass* Invoker;
 		HouseClass* InvokerHouse;
 		ParticleSystemClass* AttachedSystem;
+		BuildingClass* ParentBuilding; // Only set on building anims, used for tinting the anims etc. especially when not on same cell as building
 
 		ExtData(AnimClass* OwnerObject) : Extension<AnimClass>(OwnerObject)
 			, DeathUnitFacing { 0 }
@@ -31,23 +36,22 @@ public:
 			, Invoker {}
 			, InvokerHouse {}
 			, AttachedSystem {}
+			, ParentBuilding {}
 		{ }
 
 		void SetInvoker(TechnoClass* pInvoker);
-		void CreateAttachedSystem(ParticleSystemTypeClass* pSystemType);
+		void SetInvoker(TechnoClass* pInvoker, HouseClass* pInvokerHouse);
+		void CreateAttachedSystem();
 		void DeleteAttachedSystem();
 
 		virtual ~ExtData()
 		{
-			DeleteAttachedSystem();
+			this->DeleteAttachedSystem();
 		}
 
-		virtual void InvalidatePointer(void* ptr, bool bRemoved) override
-		{
-			AnnounceInvalidPointer(Invoker, ptr);
-			AnnounceInvalidPointer(InvokerHouse, ptr);
-			AnnounceInvalidPointer(AttachedSystem, ptr);
-		}
+		virtual void InvalidatePointer(void* ptr, bool bRemoved) override { }
+
+		virtual void InitializeConstants() override;
 
 		virtual void LoadFromStream(PhobosStreamReader& Stm) override;
 		virtual void SaveToStream(PhobosStreamWriter& Stm) override;
@@ -62,30 +66,17 @@ public:
 	public:
 		ExtContainer();
 		~ExtContainer();
-
-		virtual bool InvalidateExtDataIgnorable(void* const ptr) const override
-		{
-			auto const abs = static_cast<AbstractClass*>(ptr)->WhatAmI();
-			switch (abs)
-			{
-			case AbstractType::Aircraft:
-			case AbstractType::Building:
-			case AbstractType::Infantry:
-			case AbstractType::Unit:
-			case AbstractType::ParticleSystem:
-			case AbstractType::House:
-				return false;
-			default:
-				return true;
-			}
-		}
 	};
 
 	static ExtContainer ExtMap;
 
-	static const bool SetAnimOwnerHouseKind(AnimClass* pAnim, HouseClass* pInvoker, HouseClass* pVictim, bool defaultToVictimOwner = true);
+	static bool SetAnimOwnerHouseKind(AnimClass* pAnim, HouseClass* pInvoker, HouseClass* pVictim, bool defaultToVictimOwner = true, bool defaultToInvokerOwner = false);
 	static HouseClass* GetOwnerHouse(AnimClass* pAnim, HouseClass* pDefaultOwner = nullptr);
-
+	static void VeinAttackAI(AnimClass* pAnim);
+	static void ChangeAnimType(AnimClass* pAnim, AnimTypeClass* pNewType, bool resetLoops, bool restart);
 	static void HandleDebrisImpact(AnimTypeClass* pExpireAnim, AnimTypeClass* pWakeAnim, Iterator<AnimTypeClass*> splashAnims, HouseClass* pOwner, WarheadTypeClass* pWarhead, int nDamage,
 	CellClass* pCell, CoordStruct nLocation, bool heightFlag, bool isMeteor, bool warheadDetonate, bool explodeOnWater, bool splashAnimsPickRandom);
+
+	static void InvalidateTechnoPointers(TechnoClass* pTechno);
+	static void InvalidateParticleSystemPointers(ParticleSystemClass* pParticleSystem);
 };

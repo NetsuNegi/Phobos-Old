@@ -13,6 +13,9 @@ class BulletExt
 public:
 	using base_type = BulletClass;
 
+	static constexpr DWORD Canary = 0x2A2A2A2A;
+	static constexpr size_t ExtPointerOffset = 0x18;
+
 	class ExtData final : public Extension<BulletClass>
 	{
 	public:
@@ -23,6 +26,8 @@ public:
 		InterceptedStatus InterceptedStatus;
 		bool DetonateOnInterception;
 		std::vector<LaserTrailClass> LaserTrails;
+		bool SnappedToTarget; // Used for custom trajectory projectile target snap checks
+		int DamageNumberOffset;
 
 		PhobosTrajectory* Trajectory; // TODO: why not unique_ptr
 
@@ -35,6 +40,8 @@ public:
 			, DetonateOnInterception { true }
 			, LaserTrails {}
 			, Trajectory { nullptr }
+			, SnappedToTarget { false }
+			, DamageNumberOffset { INT32_MIN }
 		{ }
 
 		virtual ~ExtData() = default;

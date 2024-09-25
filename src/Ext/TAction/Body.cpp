@@ -12,7 +12,6 @@
 #include <Ext/Scenario/Body.h>
 
 //Static init
-template<> const DWORD Extension<TActionClass>::Canary = 0x91919191;
 TActionExt::ExtContainer TActionExt::ExtMap;
 
 // =============================
@@ -104,35 +103,15 @@ bool TActionExt::SaveGame(TActionClass* pThis, HouseClass* pHouse, ObjectClass* 
 {
 	if (SessionClass::IsSingleplayer())
 	{
-		auto PrintMessage = [](const wchar_t* pMessage)
-		{
-			MessageListClass::Instance->PrintMessage(
-				pMessage,
-				RulesClass::Instance->MessageDelay,
-				HouseClass::CurrentPlayer->ColorSchemeIndex,
-				true
-			);
-		};
+		*reinterpret_cast<bool*>(0xABCE08) = false;
+		Phobos::ShouldQuickSave = true;
 
-		char fName[0x80];
-
-		SYSTEMTIME time;
-		GetLocalTime(&time);
-
-		_snprintf_s(fName, 0x7F, "Map.%04u%02u%02u-%02u%02u%02u-%05u.sav",
-			time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds);
-
-		PrintMessage(StringTable::LoadString(GameStrings::TXT_SAVING_GAME));
-
-		wchar_t fDescription[0x80] = { 0 };
-		wcscpy_s(fDescription, ScenarioClass::Instance->UINameLoaded);
-		wcscat_s(fDescription, L" - ");
-		wcscat_s(fDescription, StringTable::LoadString(pThis->Text));
-
-		if (ScenarioClass::Instance->SaveGame(fName, fDescription))
-			PrintMessage(StringTable::LoadString(GameStrings::TXT_GAME_WAS_SAVED));
+		if (SessionClass::IsCampaign())
+			Phobos::CustomGameSaveDescription = ScenarioClass::Instance->UINameLoaded;
 		else
-			PrintMessage(StringTable::LoadString(GameStrings::TXT_ERROR_SAVING_GAME));
+			Phobos::CustomGameSaveDescription = ScenarioClass::Instance->Name;
+		Phobos::CustomGameSaveDescription += L" - ";
+		Phobos::CustomGameSaveDescription += StringTable::LoadString(pThis->Text);
 	}
 
 	return true;
@@ -457,7 +436,7 @@ DEFINE_HOOK(0x6DD176, TActionClass_CTOR, 0x5)
 {
 	GET(TActionClass*, pItem, ESI);
 
-	TActionExt::ExtMap.FindOrAllocate(pItem);
+	TActionExt::ExtMap.TryAllocate(pItem);
 	return 0;
 }
 

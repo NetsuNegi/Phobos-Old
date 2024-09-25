@@ -5,8 +5,8 @@
 #include <Ext/TechnoType/Body.h>
 #include <Ext/WarheadType/Body.h>
 #include <Utilities/EnumFunctions.h>
+#include <Misc/FlyingStrings.h>
 
-template<> const DWORD Extension<BulletClass>::Canary = 0x2A2A2A2A;
 BulletExt::ExtContainer BulletExt::ExtMap;
 
 void BulletExt::ExtData::InterceptBullet(TechnoClass* pSource, WeaponTypeClass* pWeapon)
@@ -14,7 +14,7 @@ void BulletExt::ExtData::InterceptBullet(TechnoClass* pSource, WeaponTypeClass* 
 	if (!pSource || !pWeapon)
 		return;
 
-	auto pThis = this->OwnerObject();
+	auto const pThis = this->OwnerObject();
 	auto pTypeExt = this->TypeExtData;
 	bool canAffect = false;
 	bool isIntercepted = false;
@@ -26,7 +26,12 @@ void BulletExt::ExtData::InterceptBullet(TechnoClass* pSource, WeaponTypeClass* 
 		if (versus != 0.0)
 		{
 			canAffect = true;
-			this->CurrentStrength -= static_cast<int>(pWeapon->Damage * versus * pSource->FirepowerMultiplier);
+
+			int damage = static_cast<int>(pWeapon->Damage * versus * pSource->FirepowerMultiplier);
+			this->CurrentStrength -= damage;
+
+			if (Phobos::DisplayDamageNumbers && damage != 0)
+				GeneralUtils::DisplayDamageNumberString(damage, DamageDisplayType::Intercept, this->OwnerObject()->GetRenderCoords(), this->DamageNumberOffset);
 
 			if (this->CurrentStrength <= 0)
 				isIntercepted = true;
@@ -42,7 +47,7 @@ void BulletExt::ExtData::InterceptBullet(TechnoClass* pSource, WeaponTypeClass* 
 	{
 		const auto pTechnoTypeExt = TechnoTypeExt::ExtMap.Find(pSource->GetTechnoType());
 		const auto pInterceptorType = pTechnoTypeExt->InterceptorType.get();
-		const auto pWeaponOverride = pInterceptorType->WeaponOverride.Get(pTypeExt->Interceptable_WeaponOverride.Get(nullptr));
+		const auto pWeaponOverride = pInterceptorType->WeaponOverride.Get(pTypeExt->Interceptable_WeaponOverride);
 		bool detonate = !pInterceptorType->DeleteOnIntercept.Get(pTypeExt->Interceptable_DeleteOnIntercept);
 
 		this->DetonateOnInterception = detonate;
@@ -61,7 +66,8 @@ void BulletExt::ExtData::InterceptBullet(TechnoClass* pSource, WeaponTypeClass* 
 			{
 				pThis->Speed = pWeaponOverride->Speed;
 				pThis->Type = pWeaponOverride->Projectile;
-				this->TypeExtData = BulletTypeExt::ExtMap.Find(pThis->Type);
+				pTypeExt = BulletTypeExt::ExtMap.Find(pThis->Type);
+				this->TypeExtData = pTypeExt;
 
 				if (this->LaserTrails.size())
 				{
@@ -70,6 +76,10 @@ void BulletExt::ExtData::InterceptBullet(TechnoClass* pSource, WeaponTypeClass* 
 					if (!pThis->Type->Inviso)
 						this->InitializeLaserTrails();
 				}
+
+				// Lose target if the current bullet is no longer interceptable.
+				if (!pTypeExt->Interceptable || (pTypeExt->Armor.isset() && GeneralUtils::GetWarheadVersusArmor(pWeapon->Warhead, pTypeExt->Armor.Get()) == 0.0))
+					pSource->SetTarget(nullptr);
 			}
 		}
 
@@ -83,42 +93,47 @@ void BulletExt::ExtData::ApplyRadiationToCell(CellStruct Cell, int Spread, int R
 	auto const pThis = this->OwnerObject();
 
 	auto const pWeapon = pThis->GetWeaponType();
-	auto const pWeaponExt = WeaponTypeExt::ExtMap.FindOrAllocate(pWeapon);
+	auto const pWeaponExt = WeaponTypeExt::ExtMap.Find(pWeapon);
 	auto const pRadType = pWeaponExt->RadType;
 	auto const pThisHouse = pThis->Owner ? pThis->Owner->Owner : this->FirerHouse;
 
-	if (RadSiteExt::ExtMap.size() > 0)
-	{
-		auto const it = std::find_if(RadSiteExt::ExtMap.begin(), RadSiteExt::ExtMap.end(),
-			[=](std::pair<RadSiteClass*, RadSiteExt::ExtData*> const& pair) // Lambda
-			{// find
-				return pair.second->Type == pRadType &&
-					pair.first->BaseCell == Cell &&
-					Spread == pair.first->Spread;
+	auto const it = std::find_if(RadSiteClass::Array->begin(), RadSiteClass::Array->end(),
+			[=](auto const pSite)
+		{
+			auto const pRadExt = RadSiteExt::ExtMap.Find(pSite);
+
+	if (pRadExt->Type != pRadType)
+		return false;
+
+	if (MapClass::Instance->TryGetCellAt(pSite->BaseCell) != MapClass::Instance->TryGetCellAt(Cell))
+		return false;
+
+	if (Spread != pSite->Spread)
+		return false;
+
+	if (pWeapon != pRadExt->Weapon)
+		return false;
+
+	if (pRadExt->RadInvoker && pThis->Owner)
+		return pRadExt->RadInvoker == pThis->Owner;
+
+	return true;
 			});
 
-		if (it == RadSiteExt::ExtMap.end())
-		{
-			RadSiteExt::CreateInstance(Cell, Spread, RadLevel, pWeaponExt, pThisHouse, pThis->Owner);
-		}
-		else
-		{
-			//auto const pRadExt = it->second;
-			auto const pRadSite = it->first;
-
-			if (pRadSite->GetRadLevel() + RadLevel > pRadType->GetLevelMax())
-			{
-				RadLevel = pRadType->GetLevelMax() - pRadSite->GetRadLevel();
-			}
-
-			// Handle It
-			RadSiteExt::Add(pRadSite, RadLevel);
-		}
-	}
-	else
+	if (it != RadSiteClass::Array->end())
 	{
-		RadSiteExt::CreateInstance(Cell, Spread, RadLevel, pWeaponExt, pThisHouse, pThis->Owner);
+		if ((*it)->GetRadLevel() + RadLevel >= pRadType->GetLevelMax())
+		{
+			RadLevel = pRadType->GetLevelMax() - (*it)->GetRadLevel();
+		}
+
+		auto const pRadExt = RadSiteExt::ExtMap.Find((*it));
+		// Handle It
+		pRadExt->Add(RadLevel);
+		return;
 	}
+
+	RadSiteExt::CreateInstance(Cell, Spread, RadLevel, pWeaponExt, pThisHouse, pThis->Owner);
 }
 
 void BulletExt::ExtData::InitializeLaserTrails()
@@ -126,9 +141,10 @@ void BulletExt::ExtData::InitializeLaserTrails()
 	if (this->LaserTrails.size())
 		return;
 
-	if (auto pTypeExt = this->TypeExtData)
+	auto pThis = this->OwnerObject();
+
+	if (auto pTypeExt = BulletTypeExt::ExtMap.Find(pThis->Type))
 	{
-		auto pThis = this->OwnerObject();
 		auto pOwner = pThis->Owner ? pThis->Owner->Owner : nullptr;
 
 		for (auto const& idxTrail : pTypeExt->LaserTrail_Types)
@@ -155,6 +171,8 @@ void BulletExt::ExtData::Serialize(T& Stm)
 		.Process(this->InterceptedStatus)
 		.Process(this->DetonateOnInterception)
 		.Process(this->LaserTrails)
+		.Process(this->SnappedToTarget)
+		.Process(this->DamageNumberOffset)
 		;
 
 	this->Trajectory = PhobosTrajectory::ProcessFromStream(Stm, this->Trajectory);
@@ -186,7 +204,7 @@ DEFINE_HOOK(0x4664BA, BulletClass_CTOR, 0x5)
 {
 	GET(BulletClass*, pItem, ESI);
 
-	BulletExt::ExtMap.FindOrAllocate(pItem);
+	BulletExt::ExtMap.TryAllocate(pItem);
 
 	return 0;
 }
@@ -196,7 +214,7 @@ DEFINE_HOOK(0x4665E9, BulletClass_DTOR, 0xA)
 	GET(BulletClass*, pItem, ESI);
 
 	if (auto pTraj = BulletExt::ExtMap.Find(pItem)->Trajectory)
-		DLLDelete(pTraj);
+		delete pTraj;
 
 	BulletExt::ExtMap.Remove(pItem);
 	return 0;

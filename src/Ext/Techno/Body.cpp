@@ -1,37 +1,48 @@
 #include "Body.h"
 
+#include <AircraftClass.h>
 #include <HouseClass.h>
 #include <ScenarioClass.h>
-#include <AircraftClass.h>
 
-#include <Ext/House/Body.h>
+#include <Ext/Anim/Body.h>
+#include <Ext/Scenario/Body.h>
+
 #include <Utilities/AresFunctions.h>
 
-template<> const DWORD Extension<TechnoClass>::Canary = 0x55555555;
 TechnoExt::ExtContainer TechnoExt::ExtMap;
 
 TechnoExt::ExtData::~ExtData()
 {
-	if (this->TypeExtData->AutoDeath_Behavior.isset())
+	auto const pTypeExt = this->TypeExtData;
+	auto const pType = pTypeExt->OwnerObject();
+	auto pThis = this->OwnerObject();
+
+	if (pTypeExt->AutoDeath_Behavior.isset())
 	{
-		auto pThis = this->OwnerObject();
-		auto hExt = HouseExt::ExtMap.Find(pThis->Owner);
-		auto it = std::find(hExt->OwnedTimedAutoDeathObjects.begin(), hExt->OwnedTimedAutoDeathObjects.end(), this);
-		if (it != hExt->OwnedTimedAutoDeathObjects.end())
-			hExt->OwnedTimedAutoDeathObjects.erase(it);
+		auto& vec = ScenarioExt::Global()->AutoDeathObjects;
+		vec.erase(std::remove(vec.begin(), vec.end(), this), vec.end());
 	}
+
+	if (pThis->WhatAmI() != AbstractType::Aircraft && pThis->WhatAmI() != AbstractType::Building
+		&& pType->Ammo > 0 && pTypeExt->ReloadInTransport)
+	{
+		auto& vec = ScenarioExt::Global()->TransportReloaders;
+		vec.erase(std::remove(vec.begin(), vec.end(), this), vec.end());
+	}
+
+	AnimExt::InvalidateTechnoPointers(pThis);
 }
 
 bool TechnoExt::IsActive(TechnoClass* pThis)
 {
-	return
-		pThis &&
-		!pThis->TemporalTargetingMe &&
-		!pThis->BeingWarpedOut &&
-		!pThis->IsUnderEMP() &&
-		pThis->IsAlive &&
-		pThis->Health > 0 &&
-		!pThis->InLimbo;
+	return pThis
+		&& pThis->IsAlive
+		&& pThis->Health > 0
+		&& !pThis->InLimbo
+		&& !pThis->TemporalTargetingMe
+		&& !pThis->BeingWarpedOut
+		&& !pThis->IsUnderEMP()
+		;
 }
 
 bool TechnoExt::IsHarvesting(TechnoClass* pThis)
@@ -76,15 +87,21 @@ bool TechnoExt::HasAvailableDock(TechnoClass* pThis)
 	return false;
 }
 
-void TechnoExt::SyncIronCurtainStatus(TechnoClass* pFrom, TechnoClass* pTo)
+// Syncs Iron Curtain or Force Shield timer to another techno.
+void TechnoExt::SyncInvulnerability(TechnoClass* pFrom, TechnoClass* pTo)
 {
-	if (pFrom->IsIronCurtained() && !pFrom->ForceShielded)
+	if (pFrom->IsIronCurtained())
 	{
 		const auto pTypeExt = TechnoTypeExt::ExtMap.Find(pFrom->GetTechnoType());
-		if (pTypeExt->IronCurtain_KeptOnDeploy.Get(RulesExt::Global()->IronCurtain_KeptOnDeploy))
+		bool isForceShielded = pFrom->ForceShielded;
+		bool allowSyncing = !isForceShielded ? pTypeExt->IronCurtain_KeptOnDeploy.Get(RulesExt::Global()->IronCurtain_KeptOnDeploy) :
+			pTypeExt->ForceShield_KeptOnDeploy.Get(RulesExt::Global()->ForceShield_KeptOnDeploy);
+
+		if (allowSyncing)
 		{
 			pTo->IronCurtain(pFrom->IronCurtainTimer.GetTimeLeft(), pFrom->Owner, false);
 			pTo->IronTintStage = pFrom->IronTintStage;
+			pTo->ForceShielded = isForceShielded;
 		}
 	}
 }
@@ -100,7 +117,9 @@ double TechnoExt::GetCurrentSpeedMultiplier(FootClass* pThis)
 	else
 		houseMultiplier = pThis->Owner->Type->SpeedUnitsMult;
 
-	return pThis->SpeedMultiplier * houseMultiplier *
+	auto const pExt = TechnoExt::ExtMap.Find(pThis);
+
+	return pThis->SpeedMultiplier * houseMultiplier * pExt->AE.SpeedMultiplier *
 		(pThis->HasAbility(Ability::Faster) ? RulesClass::Instance->VeteranSpeed : 1.0);
 }
 
@@ -153,14 +172,14 @@ bool TechnoExt::AllowedTargetByZone(TechnoClass* pThis, TechnoClass* pTarget, Ta
 		return true;
 
 	MovementZone mZone = pThis->GetTechnoType()->MovementZone;
-	int currentZone = useZone ? zone : MapClass::Instance->GetMovementZoneType(pThis->GetMapCoords(), mZone, pThis->IsOnBridge());
+	int currentZone = useZone ? zone : MapClass::Instance->GetMovementZoneType(pThis->GetMapCoords(), mZone, pThis->OnBridge);
 
 	if (currentZone != -1)
 	{
 		if (zoneScanType == TargetZoneScanType::Any)
 			return true;
 
-		int targetZone = MapClass::Instance->GetMovementZoneType(pTarget->GetMapCoords(), mZone, pTarget->IsOnBridge());
+		int targetZone = MapClass::Instance->GetMovementZoneType(pTarget->GetMapCoords(), mZone, pTarget->OnBridge);
 
 		if (zoneScanType == TargetZoneScanType::Same)
 		{
@@ -306,6 +325,146 @@ bool TechnoExt::ConvertToType(FootClass* pThis, TechnoTypeClass* pToType)
 	return true;
 }
 
+// Checks if vehicle can deploy into a building at its current location. If unit has no DeploysInto set returns noDeploysIntoDefaultValue (def = false) instead.
+bool TechnoExt::CanDeployIntoBuilding(UnitClass* pThis, bool noDeploysIntoDefaultValue)
+{
+	if (!pThis)
+		return false;
+
+	auto const pDeployType = pThis->Type->DeploysInto;
+
+	if (!pDeployType)
+		return noDeploysIntoDefaultValue;
+
+	bool canDeploy = true;
+	auto mapCoords = CellClass::Coord2Cell(pThis->GetCoords());
+
+	if (pDeployType->GetFoundationWidth() > 2 || pDeployType->GetFoundationHeight(false) > 2)
+		mapCoords += CellStruct { -1, -1 };
+
+	pThis->Mark(MarkType::Up);
+
+	pThis->Locomotor->Mark_All_Occupation_Bits(MarkType::Up);
+
+	if (!pDeployType->CanCreateHere(mapCoords, pThis->Owner))
+		canDeploy = false;
+
+	pThis->Locomotor->Mark_All_Occupation_Bits(MarkType::Down);
+	pThis->Mark(MarkType::Down);
+
+	return canDeploy;
+}
+
+bool TechnoExt::IsTypeImmune(TechnoClass* pThis, TechnoClass* pSource)
+{
+	if (!pThis || !pSource)
+		return false;
+
+	auto const pType = pThis->GetTechnoType();
+
+	if (!pType->TypeImmune)
+		return false;
+
+	if (pType == pSource->GetTechnoType() && pThis->Owner == pSource->Owner)
+		return true;
+
+	return false;
+}
+
+/// <summary>
+/// Gets whether or not techno has listed AttachEffect types active on it
+/// </summary>
+/// <param name="attachEffectTypes">Attacheffect types.</param>
+/// <param name="requireAll">Whether or not to require all listed types to be present or if only one will satisfy the check.</param>
+/// <param name="ignoreSameSource">Ignore AttachEffects that come from set invoker and source.</param>
+/// <param name="pInvoker">Invoker Techno used for same source check.</param>
+/// <param name="pSource">Source AbstractClass instance used for same source check.</param>
+/// <returns>True if techno has active AttachEffects that satisfy the source, false if not.</returns>
+bool TechnoExt::ExtData::HasAttachedEffects(std::vector<AttachEffectTypeClass*> attachEffectTypes, bool requireAll, bool ignoreSameSource,
+	TechnoClass* pInvoker, AbstractClass* pSource, std::vector<int> const* minCounts, std::vector<int> const* maxCounts) const
+{
+	unsigned int foundCount = 0;
+	unsigned int typeCounter = 1;
+
+	for (auto const& type : attachEffectTypes)
+	{
+		for (auto const& attachEffect : this->AttachedEffects)
+		{
+			if (attachEffect->GetType() == type && attachEffect->IsActive())
+			{
+				if (ignoreSameSource && pInvoker && pSource && attachEffect->IsFromSource(pInvoker, pSource))
+					continue;
+
+				unsigned int minSize = minCounts ? minCounts->size() : 0;
+				unsigned int maxSize = maxCounts ? maxCounts->size() : 0;
+
+				if (type->Cumulative && (minSize > 0 || maxSize > 0))
+				{
+					int cumulativeCount = this->GetAttachedEffectCumulativeCount(type, ignoreSameSource, pInvoker, pSource);
+
+					if (minSize > 0)
+					{
+						if (cumulativeCount < minCounts->at(typeCounter-1 >= minSize ? minSize - 1 : typeCounter - 1))
+							continue;
+					}
+					if (maxSize > 0)
+					{
+						if (cumulativeCount > maxCounts->at(typeCounter - 1 >= maxSize ? maxSize - 1 : typeCounter - 1))
+							continue;
+					}
+				}
+
+				// Only need to find one match, can stop here.
+				if (!requireAll)
+					return true;
+
+				foundCount++;
+				break;
+			}
+		}
+
+		// One of the required types was not found, can stop here.
+		if (requireAll && foundCount < typeCounter)
+			return false;
+
+		typeCounter++;
+	}
+
+	if (requireAll && foundCount == attachEffectTypes.size())
+		return true;
+
+	return false;
+}
+
+/// <summary>
+/// Gets how many counts of same cumulative AttachEffect type instance techno has active on it.
+/// </summary>
+/// <param name="pAttachEffectType">AttachEffect type.</param>
+/// <param name="ignoreSameSource">Ignore AttachEffects that come from set invoker and source.</param>
+/// <param name="pInvoker">Invoker Techno used for same source check.</param>
+/// <param name="pSource">Source AbstractClass instance used for same source check.</param>
+/// <returns>Number of active cumulative AttachEffect type instances on the techno. 0 if the AttachEffect type is not cumulative.</returns>
+int TechnoExt::ExtData::GetAttachedEffectCumulativeCount(AttachEffectTypeClass* pAttachEffectType, bool ignoreSameSource, TechnoClass* pInvoker, AbstractClass* pSource) const
+{
+	if (!pAttachEffectType->Cumulative)
+		return 0;
+
+	unsigned int foundCount = 0;
+
+	for (auto const& attachEffect : this->AttachedEffects)
+	{
+		if (attachEffect->GetType() == pAttachEffectType && attachEffect->IsActive())
+		{
+			if (ignoreSameSource && pInvoker && pSource && attachEffect->IsFromSource(pInvoker, pSource))
+				continue;
+
+			foundCount++;
+		}
+	}
+
+	return foundCount;
+}
+
 // =============================
 // load / save
 
@@ -316,17 +475,29 @@ void TechnoExt::ExtData::Serialize(T& Stm)
 		.Process(this->TypeExtData)
 		.Process(this->Shield)
 		.Process(this->LaserTrails)
+		.Process(this->AttachedEffects)
+		.Process(this->AE)
 		.Process(this->ReceiveDamage)
 		.Process(this->PassengerDeletionTimer)
 		.Process(this->CurrentShieldType)
 		.Process(this->LastWarpDistance)
 		.Process(this->AutoDeathTimer)
 		.Process(this->MindControlRingAnimType)
-		.Process(this->OriginalPassengerOwner)
-		.Process(this->CurrentLaserWeaponIndex)
+		.Process(this->Strafe_BombsDroppedThisRound)
+		.Process(this->CurrentAircraftWeaponIndex)
 		.Process(this->IsInTunnel)
+		.Process(this->IsBurrowed)
+		.Process(this->HasBeenPlacedOnMap)
 		.Process(this->DeployFireTimer)
+		.Process(this->SkipTargetChangeResetSequence)
 		.Process(this->ForceFullRearmDelay)
+		.Process(this->CanCloakDuringRearm)
+		.Process(this->WHAnimRemainingCreationInterval)
+		.Process(this->FiringObstacleCell)
+		.Process(this->OriginalPassengerOwner)
+		.Process(this->HasRemainingWarpInDelay)
+		.Process(this->LastWarpInDelay)
+		.Process(this->IsBeingChronoSphered)
 		;
 }
 
@@ -361,7 +532,6 @@ TechnoExt::ExtContainer::ExtContainer() : Container("TechnoClass") { }
 
 TechnoExt::ExtContainer::~ExtContainer() = default;
 
-void TechnoExt::ExtContainer::InvalidatePointer(void* ptr, bool bRemoved) { }
 
 // =============================
 // container hooks
@@ -370,7 +540,7 @@ DEFINE_HOOK(0x6F3260, TechnoClass_CTOR, 0x5)
 {
 	GET(TechnoClass*, pItem, ESI);
 
-	TechnoExt::ExtMap.FindOrAllocate(pItem);
+	TechnoExt::ExtMap.TryAllocate(pItem);
 
 	return 0;
 }
@@ -408,3 +578,4 @@ DEFINE_HOOK(0x70C264, TechnoClass_Save_Suffix, 0x5)
 
 	return 0;
 }
+

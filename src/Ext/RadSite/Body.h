@@ -15,15 +15,21 @@ class RadSiteExt
 public:
 	using base_type = RadSiteClass;
 
+	static constexpr DWORD Canary = 0x88446622;
+	static constexpr size_t ExtPointerOffset = 0x18;
+	static constexpr bool ShouldConsiderInvalidatePointer = true;
+
 	class ExtData final : public Extension<RadSiteClass>
 	{
 	public:
+		int LastUpdateFrame;
 		WeaponTypeClass* Weapon;
 		RadTypeClass* Type;
 		HouseClass* RadHouse;
 		TechnoClass* RadInvoker;
 
 		ExtData(RadSiteClass* OwnerObject) : Extension<RadSiteClass>(OwnerObject)
+			, LastUpdateFrame { -1 }
 			, RadHouse { nullptr }
 			, RadInvoker { nullptr }
 			, Type {}
@@ -32,21 +38,20 @@ public:
 
 		virtual ~ExtData() = default;
 
-		virtual size_t Size() const
-		{
-			return sizeof(*this);
-		}
-
-		virtual void InvalidatePointer(void* ptr, bool bRemoved)
-		{
-			AnnounceInvalidPointer(RadInvoker, ptr);
-		}
-
 		bool ApplyRadiationDamage(TechnoClass* pTarget, int& damage, int distance);
+		void Add(int amount);
+		void SetRadLevel(int amount);
+		double GetRadLevelAt(CellStruct const& cell) const;
+		void CreateLight();
 
 		virtual void LoadFromStream(PhobosStreamReader& Stm) override;
 		virtual void SaveToStream(PhobosStreamWriter& Stm) override;
 		virtual void Initialize() override;
+
+		virtual void InvalidatePointer(void* ptr, bool bRemoved) override
+		{
+			AnnounceInvalidPointer(RadInvoker, ptr);
+		}
 
 	private:
 		template <typename T>
@@ -54,10 +59,6 @@ public:
 	};
 
 	static void CreateInstance(CellStruct location, int spread, int amount, WeaponTypeExt::ExtData* pWeaponExt, HouseClass* const pOwner, TechnoClass* const pInvoker);
-	static void CreateLight(RadSiteClass* pThis);
-	static void Add(RadSiteClass* pThis,int amount);
-	static void SetRadLevel(RadSiteClass* pThis,int amount);
-	static const double GetRadLevelAt(RadSiteClass* pThis,CellStruct const& cell);
 
 	class ExtContainer final : public Container<RadSiteExt>
 	{
